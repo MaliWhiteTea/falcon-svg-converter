@@ -15,7 +15,7 @@ Plot ekranında:
 - `Fit page to board` açık olmalıdır.
 - `Negative plot` ve `Mirrored plot` kapalı olmalıdır.
 
-![KiCad Plot ayarları](assets/kicad-plot-ayarlari.png)
+Plot ayarlarının ekran görüntüsü uygulamanın üst bölümünde gösterilir.
 
 ## Dönüştürücüyü kullanma
 
