@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KiCad SVG → Falcon Negatif PNG</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101319;
+      --panel: #181d25;
+      --panel2: #202733;
+      --text: #f4f7fb;
+      --muted: #aeb8c7;
+      --line: #354052;
+      --accent: #5ac8fa;
+      --good: #68d391;
+      --warn: #f6c453;
+      --bad: #ff7b7b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1a2230 0, var(--bg) 48%);
+      color: var(--text);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .app { width: min(1080px, calc(100% - 28px)); margin: 28px auto 48px; }
+    h1 { margin: 0 0 5px; font-size: clamp(24px, 4vw, 36px); }
+    .lead { margin: 0 0 24px; color: var(--muted); }
+    .plot-warning {
+      margin: 0 0 18px;
+      padding: 15px 17px;
+      border: 1px solid #9a7428;
+      border-left: 5px solid var(--warn);
+      border-radius: 13px;
+      background: #302817;
+      color: #fff3cb;
+    }
+    .plot-warning h2 { margin: 0 0 8px; font-size: 17px; color: #ffe49a; }
+    .plot-warning p { margin: 0 0 12px; }
+    .plot-warning strong { color: #fff; }
+    .plot-shot {
+      margin: 12px 0;
+      overflow: hidden;
+      border: 1px solid #b78c36;
+      border-radius: 10px;
+      background: #111;
+    }
+    .plot-shot img { display: block; width: 100%; height: auto; }
+    .plot-shot figcaption {
+      padding: 9px 11px;
+      background: #1d1a12;
+      color: #dccd9f;
+      font-size: 13px;
+    }
+    .grid { display: grid; grid-template-columns: minmax(300px, 390px) 1fr; gap: 18px; }
+    .card {
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 18px 55px #0005;
+      padding: 18px;
+    }
+    .drop {
+      display: grid;
+      place-items: center;
+      min-height: 142px;
+      border: 2px dashed #4a5870;
+      border-radius: 13px;
+      background: #111720;
+      text-align: center;
+      cursor: pointer;
+      transition: .18s ease;
+      padding: 18px;
+    }
+    .drop:hover, .drop.drag { border-color: var(--accent); background: #152231; }
+    .drop strong { display: block; font-size: 17px; margin-bottom: 5px; }
+    .drop span { color: var(--muted); }
+    input[type=file] { display: none; }
+    .section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .section h2 { font-size: 15px; margin: 0 0 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { display: block; color: var(--muted); font-size: 13px; }
+    input, select, button {
+      width: 100%;
+      margin-top: 5px;
+      border: 1px solid #465269;
+      border-radius: 9px;
+      background: #0f141c;
+      color: var(--text);
+      padding: 10px 11px;
+      font: inherit;
+    }
+    input:focus, select:focus { outline: 2px solid #5ac8fa55; border-color: var(--accent); }
+    button { cursor: pointer; font-weight: 700; transition: .16s ease; }
+    button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .secondary { background: var(--panel2); }
+    .primary { background: #1486b8; border-color: #29ace4; font-size: 16px; padding: 12px; }
+    .actions { display: grid; gap: 9px; margin-top: 15px; }
+    .info {
+      margin-top: 12px;
+      background: #111720;
+      border-radius: 10px;
+      padding: 11px 12px;
+      color: var(--muted);
+      min-height: 47px;
+    }
+    .info.good { border-left: 4px solid var(--good); }
+    .info.warn { border-left: 4px solid var(--warn); }
+    .info.bad { border-left: 4px solid var(--bad); }
+    .preview-wrap {
+      min-height: 410px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(45deg,#20242b 25%,transparent 25%) 0 0/20px 20px,
+        linear-gradient(45deg,transparent 75%,#20242b 75%) 0 0/20px 20px,
+        linear-gradient(45deg,transparent 75%,#20242b 75%) -10px 10px/20px 20px,
+        linear-gradient(45deg,#20242b 25%,#171b21 25%) -10px 10px/20px 20px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      overflow: hidden;
+      padding: 18px;
+    }
+    canvas { max-width: 100%; max-height: 520px; box-shadow: 0 8px 25px #0009; image-rendering: auto; }
+    .placeholder { color: var(--muted); text-align: center; max-width: 320px; }
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 13px; color: var(--muted); }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid #778; }
+    .black { background: #000; } .white { background: #fff; }
+    .details { margin-top: 13px; color: var(--muted); }
+    .details b { color: var(--text); }
+    .tip { margin-top: 15px; padding: 12px; border-radius: 10px; background: #24301f; color: #dff4d7; }
+    .site-footer {
+      margin-top: 22px;
+      padding: 18px 12px 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+    }
+    @media (max-width: 790px) {
+      .grid { grid-template-columns: 1fr; }
+      .preview-wrap { min-height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>KiCad SVG → Falcon PNG</h1>
+    <p class="lead">Normal KiCad SVG'sini siyah zeminli, beyaz yolları korunacak Falcon görüntüsüne çevirir. Kurulum ve internet gerekmez.</p>
+
+    <aside class="plot-warning">
+      <h2>⚠ Plot alırken ayarlar bu şekilde olmalıdır</h2>
+      <p>KiCad'de SVG çıktısını almadan önce aşağıdaki ekran görüntüsündeki ayarları uygula.</p>
+      <figure class="plot-shot">
+        <img src="assets/kicad-plot-ayarlari.png" alt="KiCad Plot penceresinde B.Cu ve Edge.Cuts seçili, SVG formatı, 1:1 ölçek, siyah-beyaz çıktı ve Fit page to board açık ayarlar">
+        <figcaption>KiCad Plot ekranında kullanılacak örnek ayarlar.</figcaption>
+      </figure>
+      <div><strong>PCB şartı:</strong> Kartta, gerçek kart ölçülerinde çizilmiş ve köşeleri tamamen birleşen kapalı bir <strong>Edge.Cuts dikdörtgeni</strong> bulunmalıdır. Aksi halde SVG A4 boyutunda veya yanlış ölçüde çıkabilir.</div>
+    </aside>
+
+    <div class="grid">
+      <section class="card">
+        <label class="drop" id="dropZone" for="fileInput">
+          <div>
+            <strong>SVG dosyasını seç</strong>
+            <span>Buraya sürükleyebilir veya tıklayabilirsin</span>
+          </div>
+        </label>
+        <input id="fileInput" type="file" accept=".svg,image/svg+xml">
+
+        <div class="info" id="sourceInfo">Henüz SVG seçilmedi.</div>
+
+        <div class="section">
+          <h2>Çıktı ölçüsü</h2>
+          <div class="row">
+            <label>Genişlik (mm)
+              <input id="targetW" type="number" min="0.1" step="0.01" value="15.00">
+            </label>
+            <label>Yükseklik (mm)
+              <input id="targetH" type="number" min="0.1" step="0.01" value="6.00">
+            </label>
+          </div>
+          <button class="secondary" id="autoSize" disabled>KiCad kenar payını otomatik düzelt</button>
+        </div>
+
+        <div class="section">
+          <div class="row">
+            <label>Çözünürlük (DPI)
+              <select id="dpi">
+                <option value="1000">1000 DPI</option>
+                <option value="1270">1270 DPI</option>
+                <option value="2540" selected>2540 DPI (önerilen)</option>
+              </select>
+            </label>
+            <label>Renk işlemi
+              <select id="mode">
+                <option value="invert" selected>Negatife çevir</option>
+                <option value="keep">Renkleri koru</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="secondary" id="previewBtn" disabled>Önizlemeyi yenile</button>
+          <button class="primary" id="downloadBtn" disabled>Falcon PNG'sini indir</button>
+        </div>
+        <div class="info" id="status">KiCad'de <b>Negative plot kapalı</b> bir SVG seç.</div>
+      </section>
+
+      <section class="card">
+        <div class="preview-wrap" id="previewWrap">
+          <div class="placeholder" id="placeholder">SVG'yi seçtiğinde Falcon'a gidecek son görüntü burada görünecek.</div>
+          <canvas id="canvas" hidden></canvas>
+        </div>
+        <div class="legend">
+          <span><i class="dot black"></i>Siyah: lazer çalışır, boya kalkar</span>
+          <span><i class="dot white"></i>Beyaz: lazer çalışmaz, yol korunur</span>
+        </div>
+        <div class="details" id="outputInfo">Çıktı bilgisi bekleniyor.</div>
+        <div class="tip"><b>Falcon ayarı:</b> Görüntü/Dolgu Oyma açık, Çizgi Oyma kapalı, Invert kapalı.</div>
+      </section>
+    </div>
+
+    <footer class="site-footer">© Mert Ali AKÇAY — Yapay zeka araçları kullanılarak tasarlanmıştır.</footer>
+  </main>
+
+  <script>
+    'use strict';
+    const $ = id => document.getElementById(id);
+    const els = {
+      file: $('fileInput'), drop: $('dropZone'), source: $('sourceInfo'),
+      w: $('targetW'), h: $('targetH'), dpi: $('dpi'), mode: $('mode'),
+      auto: $('autoSize'), preview: $('previewBtn'), download: $('downloadBtn'),
+      status: $('status'), canvas: $('canvas'), placeholder: $('placeholder'), output: $('outputInfo')
+    };
+    const state = { text: '', name: '', srcW: 0, srcH: 0, ready: false };
+
+    function mmFromLength(value) {
+      if (!value) return NaN;
+      const m = String(value).trim().match(/^([+-]?[\d.]+(?:e[+-]?\d+)?)\s*(mm|cm|in|px|pt|pc)?$/i);
+      if (!m) return NaN;
+      const n = Number(m[1]);
+      const unit = (m[2] || 'px').toLowerCase();
+      return n * ({ mm: 1, cm: 10, in: 25.4, px: 25.4 / 96, pt: 25.4 / 72, pc: 25.4 / 6 }[unit]);
+    }
+
+    function parseSvgSize(text) {
+      const clean = text.replace(/<!DOCTYPE[\s\S]*?>/i, '');
+      const doc = new DOMParser().parseFromString(clean, 'image/svg+xml');
+      if (doc.querySelector('parsererror') || doc.documentElement.localName !== 'svg') throw new Error('Geçerli bir SVG dosyası değil.');
+      const root = doc.documentElement;
+      let w = mmFromLength(root.getAttribute('width'));
+      let h = mmFromLength(root.getAttribute('height'));
+      const vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+      if ((!Number.isFinite(w) || !Number.isFinite(h)) && vb.length === 4 && vb.every(Number.isFinite)) {
+        w = vb[2] * 25.4 / 96;
+        h = vb[3] * 25.4 / 96;
+      }
+      if (!(w > 0 && h > 0)) throw new Error('SVG fiziksel ölçüsü okunamadı. width/height veya viewBox gerekli.');
+      return { w, h, clean };
+    }
+
+    function suggestBoardSize(v) {
+      const corrected = Math.round((v - 0.2) * 10) / 10;
+      return corrected > 0 ? corrected : Math.round(v * 100) / 100;
+    }
+
+    async function loadFile(file) {
+      try {
+        if (!file || !/\.svg$/i.test(file.name)) throw new Error('Lütfen .svg uzantılı bir dosya seç.');
+        setStatus('SVG okunuyor…', '');
+        const text = await file.text();
+        const size = parseSvgSize(text);
+        Object.assign(state, { text: size.clean, name: file.name.replace(/\.svg$/i, ''), srcW: size.w, srcH: size.h, ready: true });
+        els.source.className = 'info good';
+        els.source.innerHTML = `<b>${escapeHtml(file.name)}</b><br>SVG sayfası: ${fmt(size.w)} × ${fmt(size.h)} mm`;
+        els.w.value = suggestBoardSize(size.w).toFixed(2);
+        els.h.value = suggestBoardSize(size.h).toFixed(2);
+        els.auto.disabled = els.preview.disabled = els.download.disabled = false;
+        await render();
+      } catch (err) {
+        state.ready = false;
+        els.auto.disabled = els.preview.disabled = els.download.disabled = true;
+        setStatus(err.message || String(err), 'bad');
+      }
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    }
+    function fmt(n) { return Number(n).toLocaleString('tr-TR', { maximumFractionDigits: 4 }); }
+    function setStatus(msg, kind='') { els.status.className = `info ${kind}`; els.status.innerHTML = msg; }
+
+    function svgImage(text) {
+      return new Promise((resolve, reject) => {
+        const blob = new Blob([text], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('SVG görüntüsü oluşturulamadı. Harici resimler içeren SVG kullanma.')); };
+        img.src = url;
+      });
+    }
+
+    async function render() {
+      if (!state.ready) return;
+      try {
+        const targetW = Number(els.w.value), targetH = Number(els.h.value), dpi = Number(els.dpi.value);
+        if (!(targetW > 0 && targetH > 0 && dpi > 0)) throw new Error('Genişlik, yükseklik ve DPI sıfırdan büyük olmalı.');
+        const outW = Math.max(1, Math.round(targetW * dpi / 25.4));
+        const outH = Math.max(1, Math.round(targetH * dpi / 25.4));
+        const srcPxW = Math.max(1, Math.round(state.srcW * dpi / 25.4));
+        const srcPxH = Math.max(1, Math.round(state.srcH * dpi / 25.4));
+        const pixels = Math.max(outW * outH, srcPxW * srcPxH);
+        if (pixels > 120_000_000) throw new Error('Çıktı çok büyük. DPI değerini düşür.');
+        setStatus('Önizleme hazırlanıyor…', '');
+
+        const img = await svgImage(state.text);
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = srcPxW; srcCanvas.height = srcPxH;
+        const sctx = srcCanvas.getContext('2d', { willReadFrequently: true });
+        sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, srcPxW, srcPxH);
+        sctx.drawImage(img, 0, 0, srcPxW, srcPxH);
+
+        els.canvas.width = outW; els.canvas.height = outH;
+        const ctx = els.canvas.getContext('2d', { willReadFrequently: true });
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH);
+        const copyW = Math.min(outW, srcPxW), copyH = Math.min(outH, srcPxH);
+        const sx = Math.max(0, Math.floor((srcPxW - outW) / 2));
+        const sy = Math.max(0, Math.floor((srcPxH - outH) / 2));
+        const dx = Math.max(0, Math.floor((outW - srcPxW) / 2));
+        const dy = Math.max(0, Math.floor((outH - srcPxH) / 2));
+        ctx.drawImage(srcCanvas, sx, sy, copyW, copyH, dx, dy, copyW, copyH);
+
+        if (els.mode.value === 'invert') {
+          const data = ctx.getImageData(0, 0, outW, outH);
+          for (let i = 0; i < data.data.length; i += 4) {
+            data.data[i] = 255 - data.data[i];
+            data.data[i + 1] = 255 - data.data[i + 1];
+            data.data[i + 2] = 255 - data.data[i + 2];
+            data.data[i + 3] = 255;
+          }
+          ctx.putImageData(data, 0, 0);
+        }
+
+        els.placeholder.hidden = true;
+        els.canvas.hidden = false;
+        els.output.innerHTML = `<b>${outW} × ${outH} piksel</b> · ${fmt(targetW)} × ${fmt(targetH)} mm · ${dpi} DPI`;
+        setStatus('Hazır. Önizleme doğruysa PNG’yi indir.', 'good');
+      } catch (err) {
+        setStatus(err.message || String(err), 'bad');
+        throw err;
+      }
+    }
+
+    function crcTable() {
+      const table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        table[n] = c >>> 0;
+      }
+      return table;
+    }
+    const CRC_TABLE = crcTable();
+    function crc32(bytes) {
+      let c = 0xffffffff;
+      for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    }
+    function u32(n) { return new Uint8Array([(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255]); }
+    function concat(parts) {
+      const out = new Uint8Array(parts.reduce((n,p)=>n+p.length,0));
+      let at=0; for (const p of parts) { out.set(p,at); at+=p.length; } return out;
+    }
+    function physChunk(dpi) {
+      const ppm = Math.round(dpi / 0.0254);
+      const type = new TextEncoder().encode('pHYs');
+      const data = concat([u32(ppm), u32(ppm), new Uint8Array([1])]);
+      return concat([u32(data.length), type, data, u32(crc32(concat([type,data])))]);
+    }
+    function addDpiToPng(buffer, dpi) {
+      const bytes = new Uint8Array(buffer), parts = [bytes.slice(0,8)];
+      let p = 8, inserted = false;
+      while (p < bytes.length) {
+        const len = new DataView(bytes.buffer, bytes.byteOffset + p, 4).getUint32(0);
+        const end = p + 12 + len;
+        const type = String.fromCharCode(...bytes.slice(p+4,p+8));
+        if (type !== 'pHYs') parts.push(bytes.slice(p,end));
+        if (type === 'IHDR' && !inserted) { parts.push(physChunk(dpi)); inserted = true; }
+        p = end;
+      }
+      return new Blob(parts, {type:'image/png'});
+    }
+
+    async function download() {
+      try {
+        await render();
+        const raw = await new Promise((resolve, reject) => els.canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG oluşturulamadı.')), 'image/png'));
+        const png = addDpiToPng(await raw.arrayBuffer(), Number(els.dpi.value));
+        const w = Number(els.w.value).toFixed(2).replace('.',','), h = Number(els.h.value).toFixed(2).replace('.',',');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(png);
+        a.download = `${state.name}-Falcon-negatif-${w}x${h}mm.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        setStatus('PNG indirildi. Falcon’da fiziksel ölçüyü bir kez kontrol et.', 'good');
+      } catch (err) { setStatus(err.message || String(err), 'bad'); }
+    }
+
+    els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+    els.drop.addEventListener('dragover', e => { e.preventDefault(); els.drop.classList.add('drag'); });
+    els.drop.addEventListener('dragleave', () => els.drop.classList.remove('drag'));
+    els.drop.addEventListener('drop', e => { e.preventDefault(); els.drop.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+    els.auto.addEventListener('click', async () => {
+      els.w.value = suggestBoardSize(state.srcW).toFixed(2);
+      els.h.value = suggestBoardSize(state.srcH).toFixed(2);
+      await render();
+    });
+    els.preview.addEventListener('click', render);
+    els.download.addEventListener('click', download);
+    [els.w, els.h, els.dpi, els.mode].forEach(el => el.addEventListener('change', () => state.ready && render()));
+  </script>
+</body>
+</html>
