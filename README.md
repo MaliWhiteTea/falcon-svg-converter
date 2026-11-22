@@ -24,7 +24,10 @@ Plot ayarlarının ekran görüntüsü uygulamanın üst bölümünde gösterili
 3. Kartın gerçek genişlik ve yüksekliğini kontrol edin. Gerekirse değerleri elle düzeltin.
 4. Çözünürlüğü seçin. Hassas çalışma için `2540 DPI` önerilir.
 5. Önizlemede siyah zeminin ve beyaz yolların doğru göründüğünü kontrol edin.
-6. **Falcon PNG'sini indir** düğmesine basın.
+6. Gerekirse **Önizlemede seçtiğim alanı kırp** seçeneğini açıp önizleme üzerinde sürükleyerek çıktı alanını seçin.
+7. **Falcon PNG'sini indir** düğmesine basın.
+
+Kırpma seçilen alanı büyütmez veya küçültmez. DPI ve mm/piksel oranı korunur; yeni PNG'nin fiziksel genişliği ve yüksekliği seçilen alana göre otomatik hesaplanır.
 
 ## Falcon Design Space ayarları
 

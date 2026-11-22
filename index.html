@@ -125,7 +125,45 @@
       overflow: hidden;
       padding: 18px;
     }
-    canvas { max-width: 100%; max-height: 520px; box-shadow: 0 8px 25px #0009; image-rendering: auto; }
+    .canvas-stage {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+      max-height: 520px;
+      line-height: 0;
+      user-select: none;
+    }
+    .canvas-stage[hidden] { display: none !important; }
+    #canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 520px;
+      box-shadow: 0 8px 25px #0009;
+      image-rendering: auto;
+    }
+    #cropLayer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      cursor: crosshair;
+      touch-action: none;
+      pointer-events: none;
+    }
+    .canvas-stage.crop-active #cropLayer { pointer-events: auto; }
+    .toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      color: var(--text);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .toggle input { width: auto; margin: 3px 0 0; accent-color: var(--accent); }
+    .small-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .crop-info { min-height: 0; font-size: 13px; }
     .placeholder { color: var(--muted); text-align: center; max-width: 320px; }
     .legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 13px; color: var(--muted); }
     .dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 1px solid #778; }
@@ -205,6 +243,17 @@
           </div>
         </div>
 
+        <div class="section">
+          <h2>İsteğe bağlı kırpma</h2>
+          <label class="toggle">
+            <input id="cropEnabled" type="checkbox" disabled>
+            <span>Önizlemede seçtiğim alanı kırp</span>
+          </label>
+          <p class="small-note">Kırpma görüntüyü yeniden boyutlandırmaz. DPI ve mm/piksel oranı korunur; yalnızca seçilen alan yeni çıktı olur.</p>
+          <button class="secondary" id="resetCrop" disabled>Kırpmayı tam görüntüye sıfırla</button>
+          <div class="info crop-info" id="cropInfo">Kırpma kapalı.</div>
+        </div>
+
         <div class="actions">
           <button class="secondary" id="previewBtn" disabled>Önizlemeyi yenile</button>
           <button class="primary" id="downloadBtn" disabled>Falcon PNG'sini indir</button>
@@ -215,7 +264,10 @@
       <section class="card">
         <div class="preview-wrap" id="previewWrap">
           <div class="placeholder" id="placeholder">SVG'yi seçtiğinde Falcon'a gidecek son görüntü burada görünecek.</div>
-          <canvas id="canvas" hidden></canvas>
+          <div class="canvas-stage" id="canvasStage" hidden>
+            <canvas id="canvas"></canvas>
+            <canvas id="cropLayer" aria-label="Kırpılacak alanı seç"></canvas>
+          </div>
         </div>
         <div class="legend">
           <span><i class="dot black"></i>Siyah: lazer çalışır, boya kalkar</span>
@@ -236,9 +288,16 @@
       file: $('fileInput'), drop: $('dropZone'), source: $('sourceInfo'),
       w: $('targetW'), h: $('targetH'), dpi: $('dpi'), mode: $('mode'),
       auto: $('autoSize'), preview: $('previewBtn'), download: $('downloadBtn'),
-      status: $('status'), canvas: $('canvas'), placeholder: $('placeholder'), output: $('outputInfo')
+      status: $('status'), canvas: $('canvas'), stage: $('canvasStage'), cropLayer: $('cropLayer'),
+      cropEnabled: $('cropEnabled'), resetCrop: $('resetCrop'), cropInfo: $('cropInfo'),
+      placeholder: $('placeholder'), output: $('outputInfo')
     };
-    const state = { text: '', name: '', srcW: 0, srcH: 0, ready: false };
+    const state = {
+      text: '', name: '', srcW: 0, srcH: 0, ready: false,
+      outW: 0, outH: 0, targetW: 0, targetH: 0, dpi: 0,
+      crop: { x: 0, y: 0, w: 1, h: 1 }
+    };
+    let cropDragStart = null;
 
     function mmFromLength(value) {
       if (!value) return NaN;
@@ -281,10 +340,14 @@
         els.source.innerHTML = `<b>${escapeHtml(file.name)}</b><br>SVG sayfası: ${fmt(size.w)} × ${fmt(size.h)} mm`;
         els.w.value = suggestBoardSize(size.w).toFixed(2);
         els.h.value = suggestBoardSize(size.h).toFixed(2);
+        state.crop = { x: 0, y: 0, w: 1, h: 1 };
+        els.cropEnabled.checked = false;
+        els.cropEnabled.disabled = false;
         els.auto.disabled = els.preview.disabled = els.download.disabled = false;
         await render();
       } catch (err) {
         state.ready = false;
+        els.cropEnabled.disabled = els.resetCrop.disabled = true;
         els.auto.disabled = els.preview.disabled = els.download.disabled = true;
         setStatus(err.message || String(err), 'bad');
       }
@@ -295,6 +358,78 @@
     }
     function fmt(n) { return Number(n).toLocaleString('tr-TR', { maximumFractionDigits: 4 }); }
     function setStatus(msg, kind='') { els.status.className = `info ${kind}`; els.status.innerHTML = msg; }
+    function clamp(n, min = 0, max = 1) { return Math.min(max, Math.max(min, n)); }
+
+    function selectedPixelRect() {
+      const c = els.cropEnabled.checked ? state.crop : { x: 0, y: 0, w: 1, h: 1 };
+      const x = clamp(Math.round(c.x * state.outW), 0, Math.max(0, state.outW - 1));
+      const y = clamp(Math.round(c.y * state.outH), 0, Math.max(0, state.outH - 1));
+      const right = clamp(Math.round((c.x + c.w) * state.outW), x + 1, state.outW);
+      const bottom = clamp(Math.round((c.y + c.h) * state.outH), y + 1, state.outH);
+      return { x, y, w: right - x, h: bottom - y };
+    }
+
+    function isFullCrop() {
+      const c = state.crop;
+      return c.x <= 0 && c.y <= 0 && c.w >= 1 && c.h >= 1;
+    }
+
+    function updateOutputInfo() {
+      if (!state.outW || !state.outH) return;
+      const r = selectedPixelRect();
+      const cropWmm = r.w * 25.4 / state.dpi;
+      const cropHmm = r.h * 25.4 / state.dpi;
+      const full = `<b>${state.outW} × ${state.outH} piksel</b> · ${fmt(state.targetW)} × ${fmt(state.targetH)} mm · ${state.dpi} DPI`;
+      els.output.innerHTML = els.cropEnabled.checked
+        ? `Tam görüntü: ${full}<br><b>Kırpılmış çıktı: ${r.w} × ${r.h} piksel · ${fmt(cropWmm)} × ${fmt(cropHmm)} mm</b> · ölçek değişmez`
+        : full;
+    }
+
+    function updateCropInfo() {
+      if (!state.ready || !els.cropEnabled.checked) {
+        els.cropInfo.textContent = 'Kırpma kapalı.';
+        return;
+      }
+      const r = selectedPixelRect();
+      const wMm = r.w * 25.4 / state.dpi;
+      const hMm = r.h * 25.4 / state.dpi;
+      els.cropInfo.innerHTML = isFullCrop()
+        ? 'Tam görüntü seçili. Önizleme üzerinde sürükleyerek yeni alan seç.'
+        : `<b>Seçim:</b> ${r.w} × ${r.h} piksel · ${fmt(wMm)} × ${fmt(hMm)} mm<br>Değiştirmek için yeniden sürükle.`;
+    }
+
+    function drawCropOverlay() {
+      const layer = els.cropLayer;
+      const ctx = layer.getContext('2d');
+      ctx.clearRect(0, 0, layer.width, layer.height);
+      if (!state.ready || !els.cropEnabled.checked || !state.outW || !state.outH) return;
+      const r = selectedPixelRect();
+      ctx.fillStyle = 'rgba(0, 0, 0, .62)';
+      ctx.fillRect(0, 0, layer.width, layer.height);
+      ctx.clearRect(r.x, r.y, r.w, r.h);
+      const shown = layer.getBoundingClientRect();
+      const scale = shown.width ? layer.width / shown.width : 1;
+      const line = Math.max(1, 2 * scale);
+      ctx.strokeStyle = '#5ac8fa';
+      ctx.lineWidth = line;
+      ctx.setLineDash([8 * scale, 5 * scale]);
+      ctx.strokeRect(r.x + line / 2, r.y + line / 2, Math.max(0, r.w - line), Math.max(0, r.h - line));
+      ctx.setLineDash([]);
+    }
+
+    function updateCropUi() {
+      const active = state.ready && els.cropEnabled.checked;
+      els.stage.classList.toggle('crop-active', active);
+      els.resetCrop.disabled = !active;
+      if (!active) {
+        const ctx = els.cropLayer.getContext('2d');
+        ctx.clearRect(0, 0, els.cropLayer.width, els.cropLayer.height);
+      } else {
+        drawCropOverlay();
+      }
+      updateCropInfo();
+      updateOutputInfo();
+    }
 
     function svgImage(text) {
       return new Promise((resolve, reject) => {
@@ -328,6 +463,7 @@
         sctx.drawImage(img, 0, 0, srcPxW, srcPxH);
 
         els.canvas.width = outW; els.canvas.height = outH;
+        els.cropLayer.width = outW; els.cropLayer.height = outH;
         const ctx = els.canvas.getContext('2d', { willReadFrequently: true });
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH);
         const copyW = Math.min(outW, srcPxW), copyH = Math.min(outH, srcPxH);
@@ -348,10 +484,11 @@
           ctx.putImageData(data, 0, 0);
         }
 
+        Object.assign(state, { outW, outH, targetW, targetH, dpi });
         els.placeholder.hidden = true;
-        els.canvas.hidden = false;
-        els.output.innerHTML = `<b>${outW} × ${outH} piksel</b> · ${fmt(targetW)} × ${fmt(targetH)} mm · ${dpi} DPI`;
-        setStatus('Hazır. Önizleme doğruysa PNG’yi indir.', 'good');
+        els.stage.hidden = false;
+        updateCropUi();
+        setStatus(els.cropEnabled.checked ? 'Kırpılacak alanı önizleme üzerinde sürükleyerek seç.' : 'Hazır. Önizleme doğruysa PNG’yi indir.', 'good');
       } catch (err) {
         setStatus(err.message || String(err), 'bad');
         throw err;
@@ -401,16 +538,56 @@
     async function download() {
       try {
         await render();
-        const raw = await new Promise((resolve, reject) => els.canvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG oluşturulamadı.')), 'image/png'));
+        const r = selectedPixelRect();
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = r.w; exportCanvas.height = r.h;
+        exportCanvas.getContext('2d').drawImage(els.canvas, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+        const raw = await new Promise((resolve, reject) => exportCanvas.toBlob(b => b ? resolve(b) : reject(new Error('PNG oluşturulamadı.')), 'image/png'));
         const png = addDpiToPng(await raw.arrayBuffer(), Number(els.dpi.value));
-        const w = Number(els.w.value).toFixed(2).replace('.',','), h = Number(els.h.value).toFixed(2).replace('.',',');
+        const wMm = r.w * 25.4 / state.dpi, hMm = r.h * 25.4 / state.dpi;
+        const w = wMm.toFixed(2).replace('.',','), h = hMm.toFixed(2).replace('.',',');
+        const cropTag = els.cropEnabled.checked && !isFullCrop() ? '-kirpilmis' : '';
         const a = document.createElement('a');
         a.href = URL.createObjectURL(png);
-        a.download = `${state.name}-Falcon-negatif-${w}x${h}mm.png`;
+        a.download = `${state.name}-Falcon-negatif${cropTag}-${w}x${h}mm.png`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-        setStatus('PNG indirildi. Falcon’da fiziksel ölçüyü bir kez kontrol et.', 'good');
+        setStatus(`PNG indirildi: ${fmt(wMm)} × ${fmt(hMm)} mm. DPI ve ölçek korunmuştur.`, 'good');
       } catch (err) { setStatus(err.message || String(err), 'bad'); }
+    }
+
+    function cropPoint(e) {
+      const rect = els.cropLayer.getBoundingClientRect();
+      return {
+        x: clamp((e.clientX - rect.left) / rect.width),
+        y: clamp((e.clientY - rect.top) / rect.height)
+      };
+    }
+
+    function updateCropSelection(point) {
+      const x1 = clamp(cropDragStart.x), y1 = clamp(cropDragStart.y);
+      const x2 = clamp(point.x), y2 = clamp(point.y);
+      state.crop = {
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        w: Math.abs(x2 - x1),
+        h: Math.abs(y2 - y1)
+      };
+      drawCropOverlay();
+      updateCropInfo();
+      updateOutputInfo();
+    }
+
+    function finishCrop(e) {
+      if (!cropDragStart) return;
+      updateCropSelection(cropPoint(e));
+      cropDragStart = null;
+      const r = selectedPixelRect();
+      if (r.w < 2 || r.h < 2) state.crop = { x: 0, y: 0, w: 1, h: 1 };
+      drawCropOverlay();
+      updateCropInfo();
+      updateOutputInfo();
+      setStatus(isFullCrop() ? 'Seçim çok küçüktü; kırpma tam görüntüye sıfırlandı.' : 'Kırpma seçildi. İndirilen PNG bu alanı aynı fiziksel ölçekte kullanacak.', isFullCrop() ? 'warn' : 'good');
     }
 
     els.file.addEventListener('change', e => loadFile(e.target.files[0]));
@@ -424,6 +601,31 @@
     });
     els.preview.addEventListener('click', render);
     els.download.addEventListener('click', download);
+    els.cropEnabled.addEventListener('change', () => {
+      updateCropUi();
+      setStatus(els.cropEnabled.checked ? 'Önizleme üzerinde fareyle veya parmağınla sürükleyerek kırpılacak alanı seç.' : 'Kırpma kapatıldı; tam görüntü indirilecek.', els.cropEnabled.checked ? 'good' : '');
+    });
+    els.resetCrop.addEventListener('click', () => {
+      state.crop = { x: 0, y: 0, w: 1, h: 1 };
+      updateCropUi();
+      setStatus('Kırpma tam görüntüye sıfırlandı.', 'good');
+    });
+    els.cropLayer.addEventListener('pointerdown', e => {
+      if (!els.cropEnabled.checked) return;
+      e.preventDefault();
+      cropDragStart = cropPoint(e);
+      state.crop = { x: cropDragStart.x, y: cropDragStart.y, w: 0, h: 0 };
+      els.cropLayer.setPointerCapture(e.pointerId);
+      drawCropOverlay();
+    });
+    els.cropLayer.addEventListener('pointermove', e => {
+      if (!cropDragStart) return;
+      e.preventDefault();
+      updateCropSelection(cropPoint(e));
+    });
+    els.cropLayer.addEventListener('pointerup', finishCrop);
+    els.cropLayer.addEventListener('pointercancel', finishCrop);
+    window.addEventListener('resize', drawCropOverlay);
     [els.w, els.h, els.dpi, els.mode].forEach(el => el.addEventListener('change', () => state.ready && render()));
   </script>
 </body>
